@@ -1,0 +1,28 @@
+{
+  "name": "domru-webhook",
+  "version": "0.0.1",
+  "author": "D",
+  "homepage": "https://github.com/twocolors/domru-webhook",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twocolors/domru-webhook.git"
+  },
+  "bugs": {
+    "url": "https://github.com/twocolors/domru-webhook/issues"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "undici": "^6.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.1.1",
+    "prettier": "^3.2.5"
+  }
+}
