@@ -3,6 +3,7 @@ FROM node:lts-alpine AS builder
 WORKDIR /app
 COPY . .
 
+ENV NODE_ENV=production
 RUN npm i
 
 RUN npm cache clean --force
