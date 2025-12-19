@@ -27,10 +27,10 @@
 ### Переменные окружения (ENV)
 
 ```
-DOMRU_URL   - URL Domru для получения авторизационных данных SIP
+DOMRU_URL   - URL Domru для получения авторизационных данных
 WEBHOOK_URL - URL на который отправляется webhook (HTTP POST)
-SIP_DEBUG   - Включение дебага SIP (true/false, по умолчанию false)
-LOCAL_PORT  - Локальный UDP‑порт для SIP (по умолчанию 5060)
+DEBUG       - Включение дебага (true/false, по умолчанию false)
+LOCAL_PORT  - Локальный UDP‑порт (по умолчанию 5060)
 ```
 
 ---
@@ -102,7 +102,7 @@ services:
       - DOMRU_URL=http://127.0.0.1:18000/rest/v1/places/1234/accesscontrols/4321/sipdevices
       - WEBHOOK_URL=http://webhook.example
       - LOCAL_PORT=5060
-      - SIP_DEBUG=false
+      - DEBUG=false
     ports:
       - "5060:5060/udp"
 ```
@@ -112,7 +112,7 @@ services:
 ## Безопасность
 
 * Не публикуйте `DOMRU_URL`
-* Отключайте `SIP_DEBUG` в продакшене
+* Отключайте `DEBUG` в продакшене
 * Используйте HTTPS для `WEBHOOK_URL`
 
 ---
