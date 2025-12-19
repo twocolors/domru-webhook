@@ -8,7 +8,7 @@ const pkg = require('./package.json');
 
 const DOMRU_URL = process.env.DOMRU_URL;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const DEBUG = process.env.DEBUG || false;
+const DEBUG = process.env.DEBUG && process.env.DEBUG == 'true' ? true : false;
 const PORT = process.env.PORT || 5060;
 
 if (!DOMRU_URL) {
