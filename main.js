@@ -8,7 +8,8 @@ const pkg = require('./package.json');
 
 const DOMRU_URL = process.env.DOMRU_URL;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const SIP_DEBUG = process.env.SIP_DEBUG || false;
+const DEBUG = process.env.DEBUG || false;
+const PORT = process.env.PORT || 5060;
 
 if (!DOMRU_URL) {
   console.error('ENV DOMRU_URL is not set');
@@ -23,16 +24,12 @@ if (!WEBHOOK_URL) {
 const USER_AGENT = `${pkg.name}/${pkg.version}`;
 const ISSUES = pkg.bugs.url;
 
-const SIP_PORT = 5060;
-const LOCAL_PORT = process.env.LOCAL_PORT || 5060;
-
-let SIP_SERVER = '';
+let REALM = '';
 let USER = '';
 let PASS = '';
 
-let PUBLIC_IP = '';
-let LOCAL_IP = '';
-let UUID = '';
+let IP = process.env.IP || null;
+let UUID = null;
 
 let callId = crypto.randomUUID();
 let cseq = 1;
@@ -40,37 +37,19 @@ let expires = 120;
 
 let registerStep = 1;
 let registerTimer = null;
-let optionsTimer = null;
 
 const socket = dgram.createSocket('udp4');
 
 const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const header = (m, l, s) =>
+  m.match(new RegExp(`^(${l}|${s}):.*$`, 'mi'))?.[0] || null;
 
-function getHeader(msg, longName, shortName) {
-  return (
-    msg.match(new RegExp(`^${longName}:.*$`, 'mi'))?.[0] ||
-    (shortName ? msg.match(new RegExp(`^${shortName}:.*$`, 'mi'))?.[0] : null)
-  );
+function debug(m) {
+  if (DEBUG) console.log(m);
 }
 
-async function getPublicIP() {
-  const { statusCode, body } = await request(
-    'https://api.ipify.org?format=text',
-    {
-      headers: { 'user-agent': USER_AGENT },
-    }
-  );
-
-  if (statusCode !== 200 && statusCode !== 201) {
-    console.error(`PUBLIC_IP error ${statusCode}`);
-    process.exit(1);
-  }
-
-  return (await body.text()).trim();
-}
-
-function getLocalIP() {
+function getIp() {
   const interfaces = os.networkInterfaces();
   for (const devName in interfaces) {
     const iface = interfaces[devName];
@@ -87,7 +66,7 @@ function getLocalIP() {
     }
   }
 
-  console.error(`LOCAL_IP error`);
+  console.error(`IP error`);
   process.exit(1);
 }
 
@@ -102,40 +81,45 @@ function getUUID(ip) {
   ].join('-');
 }
 
-async function fetchSipCredentials() {
-  const { statusCode, body } = await request(DOMRU_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'user-agent': USER_AGENT,
-    },
-    body: JSON.stringify({ installationId: UUID }),
-  });
+async function fetchCredentials() {
+  try {
+    const { statusCode, body } = await request(DOMRU_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': USER_AGENT,
+      },
+      body: JSON.stringify({ installationId: UUID }),
+    });
 
-  if (statusCode !== 200 && statusCode !== 201) {
-    console.error(`${DOMRU_URL} error ${statusCode}`);
+    if (statusCode !== 200 && statusCode !== 201) {
+      console.error(`${DOMRU_URL} error ${statusCode}`);
+      process.exit(1);
+    }
+
+    const json = await body.json();
+    const data = json?.data;
+
+    if (!data || !data.login || !data.password || !data.realm) {
+      console.error(
+        `Credentials not received (${DOMRU_URL})`
+      );
+      process.exit(1);
+    }
+
+    USER = data.login;
+    PASS = data.password;
+    REALM = data.realm;
+
+    console.log('Credentials:');
+    console.log('  realm    =', REALM);
+    console.log('  login    =', USER);
+    console.log('  password =', PASS);
+    console.log('\n');
+  } catch (e) {
+    console.log('!!! Credentials error:', e.message);
     process.exit(1);
   }
-
-  const json = await body.json();
-  const data = json?.data;
-
-  if (!data || !data.login || !data.password || !data.realm) {
-    console.error(`SIP Credentials not received or incomplete from ${DOMRU_URL}`);
-    process.exit(1);
-  }
-
-  USER = data.login;
-  PASS = data.password;
-  SIP_SERVER = data.realm;
-
-  console.log('SIP Credentials:');
-  console.log('  realm    =', SIP_SERVER);
-  console.log('  login    =', USER);
-  console.log('  password =', PASS);
-  console.log('\n');
-
-  return data;
 }
 
 function sendWebhook(payload) {
@@ -159,15 +143,15 @@ function buildRegister(auth) {
   const branch = 'z9hG4bK' + crypto.randomBytes(6).toString('hex');
   const tag = crypto.randomBytes(4).toString('hex');
 
-  let msg = `REGISTER sip:${SIP_SERVER} SIP/2.0
-Via: SIP/2.0/UDP ${LOCAL_IP}:${LOCAL_PORT};branch=${branch}
+  let msg = `REGISTER sip:${REALM} SIP/2.0
+Via: SIP/2.0/UDP ${IP}:${PORT};branch=${branch}
 Max-Forwards: 70
-From: <sip:${USER}@${SIP_SERVER}>;tag=${tag}
-To: <sip:${USER}@${SIP_SERVER}>
+From: <sip:${USER}@${REALM}>;tag=${tag}
+To: <sip:${USER}@${REALM}>
 Call-ID: ${callId}
 CSeq: ${cseq} REGISTER
 Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
-Contact: <sip:${USER}@${LOCAL_IP}:${LOCAL_PORT}>;expires=${cseq === 1 ? 0 : expires}
+Contact: <sip:${USER}@${IP}:${PORT}>;expires=${cseq === 1 ? 0 : expires}
 Expires: ${cseq === 1 ? 0 : expires}
 X-Domru-Issues: ${ISSUES}
 User-Agent: ${USER_AGENT}`;
@@ -177,43 +161,21 @@ User-Agent: ${USER_AGENT}`;
   return msg;
 }
 
-function buildOptions() {
-  const branch = 'z9hG4bK' + crypto.randomBytes(6).toString('hex');
-  const tag = crypto.randomBytes(4).toString('hex');
-
-  return `OPTIONS sip:${SIP_SERVER} SIP/2.0
-Via: SIP/2.0/UDP ${LOCAL_IP}:${LOCAL_PORT};branch=${branch}
-Max-Forwards: 70
-From: <sip:${USER}@${SIP_SERVER}>;tag=${tag}
-To: <sip:${USER}@${SIP_SERVER}>
-Call-ID: ${crypto.randomUUID()}
-CSeq: 1 OPTIONS
-Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
-Contact: <sip:${USER}@${LOCAL_IP}:${LOCAL_PORT}>
-X-Domru-Issues: ${ISSUES}
-User-Agent: ${USER_AGENT}
-Content-Length: 0`;
-}
-
 function buildAuth(realm, nonce) {
   const ha1 = md5(`${USER}:${realm}:${PASS}`);
-  const ha2 = md5(`REGISTER:sip:${SIP_SERVER}`);
+  const ha2 = md5(`REGISTER:sip:${REALM}`);
   const response = md5(`${ha1}:${nonce}:${ha2}`);
 
-  return `Digest username="${USER}", realm="${realm}", nonce="${nonce}", uri="sip:${SIP_SERVER}", response="${response}"`;
+  return `Digest username="${USER}", realm="${realm}", nonce="${nonce}", uri="sip:${REALM}", response="${response}"`;
 }
 
 function send(msg) {
-  if (SIP_DEBUG) console.log('>>> SIP >>>\n' + msg);
-  socket.send(msg, SIP_PORT, SIP_SERVER);
+  debug('>>> SIP >>>\n' + msg);
+  socket.send(msg, 5060, REALM);
 }
 
 function sendRegister(auth) {
   send(buildRegister(auth));
-}
-
-function sendOptions() {
-  send(buildOptions());
 }
 
 function scheduleReRegister() {
@@ -227,25 +189,17 @@ function scheduleReRegister() {
   );
 }
 
-function startOptionsKeepalive() {
-  clearInterval(optionsTimer);
-  optionsTimer = setInterval(sendOptions, 30000);
-}
-
 async function handle403() {
-  console.log(
-    '!!! Forbidden -> re-fetch SIP credentials (sleep 60 sec)\n\n'
-  );
+  console.log('!!! Forbidden -> re-fetch credentials (sleep 60 sec)\n\n');
 
   clearTimeout(registerTimer);
-  clearInterval(optionsTimer);
 
   callId = crypto.randomUUID();
   registerStep = 1;
   cseq = 1;
 
   await sleep(60 * 1000);
-  await fetchSipCredentials();
+  await fetchCredentials();
 
   sendRegister();
 }
@@ -267,16 +221,14 @@ async function handle401(msg) {
 }
 
 function handleInvite(msg, rinfo) {
-  const via = getHeader(msg, 'Via', 'v');
-  const from = getHeader(msg, 'From', 'f');
-  const to = getHeader(msg, 'To', 't');
-  const callId = getHeader(msg, 'Call-ID', 'i');
-  const cseq = getHeader(msg, 'CSeq');
+  const via = header(msg, 'Via', 'v');
+  const from = header(msg, 'From', 'f');
+  const to = header(msg, 'To', 't');
+  const callId = header(msg, 'Call-ID', 'i');
+  const cseq = header(msg, 'CSeq');
 
   sendWebhook({
-    type: 'INVITE',
-    from,
-    to,
+    event: 'Ringing',
   });
 
   const trying = `SIP/2.0 100 Trying
@@ -299,21 +251,21 @@ Content-Length: 0
 
 `;
 
-  if (SIP_DEBUG) console.log('>>> SIP >>>\n' + trying);
+  debug('>>> SIP >>>\n' + trying);
   socket.send(trying, rinfo.port, rinfo.address);
 
   setTimeout(() => {
-    if (SIP_DEBUG) console.log('>>> SIP >>>\n' + busy);
+    debug('>>> SIP >>>\n' + busy);
     socket.send(busy, rinfo.port, rinfo.address);
   }, 250);
 }
 
 function handleOptions(msg, rinfo) {
-  const via = getHeader(msg, 'Via', 'v');
-  const from = getHeader(msg, 'From', 'f');
-  const to = getHeader(msg, 'To', 't');
-  const callId = getHeader(msg, 'Call-ID', 'i');
-  const cseq = getHeader(msg, 'CSeq');
+  const via = header(msg, 'Via', 'v');
+  const from = header(msg, 'From', 'f');
+  const to = header(msg, 'To', 't');
+  const callId = header(msg, 'Call-ID', 'i');
+  const cseq = header(msg, 'CSeq');
 
   if (!via || !from || !to || !callId || !cseq) {
     console.error('Malformed OPTIONS, skip');
@@ -333,16 +285,16 @@ Content-Length: 0
 
 `;
 
-  if (SIP_DEBUG) console.log('>>> SIP >>>\n' + ok);
+  debug('>>> SIP >>>\n' + ok);
   socket.send(ok, rinfo.port, rinfo.address);
 }
 
 function handleNotify(msg, rinfo) {
-  const via = getHeader(msg, 'Via', 'v');
-  const from = getHeader(msg, 'From', 'f');
-  const to = getHeader(msg, 'To', 't');
-  const callId = getHeader(msg, 'Call-ID', 'i');
-  const cseq = getHeader(msg, 'CSeq');
+  const via = header(msg, 'Via', 'v');
+  const from = header(msg, 'From', 'f');
+  const to = header(msg, 'To', 't');
+  const callId = header(msg, 'Call-ID', 'i');
+  const cseq = header(msg, 'CSeq');
 
   if (!via || !from || !to || !callId || !cseq) {
     console.error('Malformed NOTIFY, skip');
@@ -361,13 +313,13 @@ Content-Length: 0
 
 `;
 
-  if (SIP_DEBUG) console.log('>>> SIP >>>\n' + not);
+  debug('>>> SIP >>>\n' + not);
   socket.send(not, rinfo.port, rinfo.address);
 }
 
 socket.on('message', async (buf, rinfo) => {
   const msg = buf.toString();
-  if (SIP_DEBUG) console.log('<<< SIP <<<\n' + msg);
+  debug('<<< SIP <<<\n' + msg);
 
   if (msg.startsWith('SIP/2.0 401')) await handle401(msg);
   else if (msg.startsWith('SIP/2.0 403')) await handle403();
@@ -379,7 +331,6 @@ socket.on('message', async (buf, rinfo) => {
     } else {
       registerStep = 1;
       scheduleReRegister();
-      // startOptionsKeepalive();
     }
   } else if (msg.startsWith('INVITE')) handleInvite(msg, rinfo);
   else if (msg.startsWith('OPTIONS')) handleOptions(msg, rinfo);
@@ -387,18 +338,17 @@ socket.on('message', async (buf, rinfo) => {
 });
 
 async function init() {
-  // PUBLIC_IP = await getPublicIP();
-  LOCAL_IP = getLocalIP();
-  UUID = getUUID(LOCAL_IP);
+  if (!IP) IP = getIp();
+  UUID = getUUID(IP);
 
-  // console.log('Public IP:', PUBLIC_IP);
-  console.log('LOCAL IP:  ', LOCAL_IP);
-  console.log('LOCAL PORT:', LOCAL_PORT);
-  console.log('UUID:      ', UUID);
+  console.log('DEBUG: ', DEBUG);
+  console.log('IP:    ', IP);
+  console.log('PORT:  ', PORT);
+  console.log('UUID:  ', UUID);
 
-  await fetchSipCredentials();
+  await fetchCredentials();
 
   sendRegister();
 }
 
-socket.bind(LOCAL_PORT, init);
+socket.bind(PORT, init);
