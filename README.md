@@ -30,7 +30,8 @@
 DOMRU_URL   - URL Domru для получения авторизационных данных
 WEBHOOK_URL - URL на который отправляется webhook (HTTP POST)
 DEBUG       - Включение дебага (true/false, по умолчанию false)
-LOCAL_PORT  - Локальный UDP‑порт (по умолчанию 5060)
+PORT        - Локальный UDP‑порт (по умолчанию 5060)
+IP          - Локальный IP (по умолчанию auto)
 ```
 
 ---
@@ -101,7 +102,7 @@ services:
       - TZ=Europe/Moscow
       - DOMRU_URL=http://127.0.0.1:18000/rest/v1/places/1234/accesscontrols/4321/sipdevices
       - WEBHOOK_URL=http://webhook.example
-      - LOCAL_PORT=5060
+      - PORT=5060
       - DEBUG=false
     ports:
       - "5060:5060/udp"
@@ -120,4 +121,4 @@ services:
 ## Примечания
 
 * Контейнер должен иметь доступ к Domru API
-* UDP‑порт `LOCAL_PORT` должен быть открыт и не занят другим сервисом
+* UDP‑порт `PORT` должен быть открыт и не занят другим сервисом
