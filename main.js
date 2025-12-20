@@ -144,7 +144,7 @@ function buildRegister(auth) {
   const tag = crypto.randomBytes(4).toString('hex');
 
   let msg = `REGISTER sip:${REALM} SIP/2.0
-Via: SIP/2.0/UDP ${IP}:${PORT};branch=${branch}
+Via: SIP/2.0/UDP ${IP}:${PORT};branch=${branch};rport
 Max-Forwards: 70
 From: <sip:${USER}@${REALM}>;tag=${tag}
 To: <sip:${USER}@${REALM}>
@@ -152,6 +152,7 @@ Call-ID: ${callId}
 CSeq: ${cseq} REGISTER
 Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
 Contact: <sip:${USER}@${IP}:${PORT}>;expires=${cseq === 1 ? 0 : expires}
+Supported: outbound
 Expires: ${cseq === 1 ? 0 : expires}
 X-Domru-Issues: ${ISSUES}
 User-Agent: ${USER_AGENT}`;
