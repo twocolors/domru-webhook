@@ -101,9 +101,7 @@ async function fetchCredentials() {
     const data = json?.data;
 
     if (!data || !data.login || !data.password || !data.realm) {
-      console.error(
-        `Credentials not received (${DOMRU_URL})`
-      );
+      console.error(`Credentials not received (${DOMRU_URL})`);
       process.exit(1);
     }
 
@@ -228,6 +226,8 @@ function handleInvite(msg, rinfo) {
   const callId = header(msg, 'Call-ID', 'i');
   const cseq = header(msg, 'CSeq');
 
+  const tag = crypto.randomBytes(4).toString('hex');
+
   sendWebhook({
     event: 'Ringing',
   });
@@ -242,10 +242,20 @@ Content-Length: 0
 
 `;
 
+  const ringing = `SIP/2.0 180 Ringing
+${via}
+${from}
+${to};tag=${tag}
+${callId}
+${cseq}
+Content-Length: 0
+
+`;
+
   const busy = `SIP/2.0 486 Busy Here
 ${via}
 ${from}
-${to};tag=${crypto.randomBytes(4).toString('hex')}
+${to};tag=${tag}
 ${callId}
 ${cseq}
 Content-Length: 0
@@ -256,9 +266,14 @@ Content-Length: 0
   socket.send(trying, rinfo.port, rinfo.address);
 
   setTimeout(() => {
+    debug('>>> SIP >>>\n' + ringing);
+    socket.send(ringing, rinfo.port, rinfo.address);
+  }, 150);
+
+  setTimeout(() => {
     debug('>>> SIP >>>\n' + busy);
     socket.send(busy, rinfo.port, rinfo.address);
-  }, 250);
+  }, 25150);
 }
 
 function handleOptions(msg, rinfo) {
