@@ -148,8 +148,7 @@ From: <sip:${USER}@${REALM}>;tag=${tag}
 To: <sip:${USER}@${REALM}>
 Call-ID: ${callId}
 CSeq: ${cseq} REGISTER
-Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
-Contact: <sip:${USER}@${IP}:${PORT}>;expires=${cseq === 1 ? 0 : expires}
+Contact: <sip:${USER}@${IP}:${PORT};ob>;reg-id=42;expires=${cseq === 1 ? 0 : expires}
 Supported: outbound
 Expires: ${cseq === 1 ? 0 : expires}
 X-Domru-Issues: ${ISSUES}
