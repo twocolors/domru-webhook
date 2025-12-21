@@ -272,7 +272,7 @@ Content-Length: 0
   setTimeout(() => {
     debug('>>> SIP >>>\n' + busy);
     socket.send(busy, rinfo.port, rinfo.address);
-  }, 25150);
+  }, 5150);
 }
 
 function handleOptions(msg, rinfo) {
