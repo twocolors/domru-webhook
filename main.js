@@ -241,16 +241,6 @@ Content-Length: 0
 
 `;
 
-  const ringing = `SIP/2.0 180 Ringing
-${via}
-${from}
-${to};tag=${tag}
-${callId}
-${cseq}
-Content-Length: 0
-
-`;
-
   const not = `SIP/2.0 404 Not Found
 ${via}
 ${from}
@@ -261,18 +251,15 @@ Content-Length: 0
 
 `;
 
-  debug('>>> SIP >>>\n' + trying);
-  socket.send(trying, rinfo.port, rinfo.address);
-
   setTimeout(() => {
-    debug('>>> SIP >>>\n' + ringing);
-    socket.send(ringing, rinfo.port, rinfo.address);
-  }, 150);
+    debug('>>> SIP >>>\n' + trying);
+    socket.send(trying, rinfo.port, rinfo.address);
+  }, 25);
 
   setTimeout(() => {
     debug('>>> SIP >>>\n' + not);
     socket.send(not, rinfo.port, rinfo.address);
-  }, 5150);
+  }, 175);
 }
 
 function handleOptions(msg, rinfo) {
