@@ -31,19 +31,34 @@ let PASS = '';
 let IP = process.env.IP || null;
 let UUID = null;
 
-let callId = crypto.randomUUID();
-let cseq = 1;
-let expires = 120;
-
-let registerStep = 1;
+let callId = null;
+let cseq = null;
+let expires = null;
 let registerTimer = null;
 
 const socket = dgram.createSocket('udp4');
 
 const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const tag = () => crypto.randomBytes(4).toString('hex');
 const header = (m, l, s) =>
   m.match(new RegExp(`^(${l}|${s}):.*$`, 'mi'))?.[0] || null;
+const headers = (m) => {
+  const via = header(m, 'Via', 'v');
+  const from = header(m, 'From', 'f');
+  const to = header(m, 'To', 't');
+  const callId = header(m, 'Call-ID', 'i');
+  const cseq = header(m, 'CSeq');
+
+  return { via, from, to, callId, cseq };
+};
+const unRegister = () => {
+  callId = crypto.randomUUID();
+  cseq = 1;
+  expires = 120;
+
+  clearTimeout(registerTimer);
+};
 
 function debug(m) {
   if (DEBUG) console.log(m);
@@ -138,13 +153,10 @@ function sendWebhook(payload) {
 }
 
 function buildRegister(auth) {
-  const branch = 'z9hG4bK' + crypto.randomBytes(6).toString('hex');
-  const tag = crypto.randomBytes(4).toString('hex');
-
   let msg = `REGISTER sip:${REALM} SIP/2.0
-Via: SIP/2.0/UDP ${IP}:${PORT};branch=${branch};rport
+Via: SIP/2.0/UDP ${IP}:${PORT};branch=z9hG4bK${tag()};rport
 Max-Forwards: 70
-From: <sip:${USER}@${REALM}>;tag=${tag}
+From: <sip:${USER}@${REALM}>;tag=${tag()}
 To: <sip:${USER}@${REALM}>
 Call-ID: ${callId}
 CSeq: ${cseq} REGISTER
@@ -176,8 +188,9 @@ function sendRegister(auth) {
   send(buildRegister(auth));
 }
 
-function scheduleReRegister() {
+function scheduleRegister() {
   clearTimeout(registerTimer);
+
   registerTimer = setTimeout(
     () => {
       cseq++;
@@ -190,15 +203,11 @@ function scheduleReRegister() {
 async function handle403() {
   console.log('!!! Forbidden -> re-fetch credentials (sleep 60 sec)\n\n');
 
-  clearTimeout(registerTimer);
-
-  callId = crypto.randomUUID();
-  registerStep = 1;
-  cseq = 1;
-
   await sleep(60 * 1000);
+
   await fetchCredentials();
 
+  unRegister();
   sendRegister();
 }
 
@@ -207,25 +216,18 @@ async function handle401(msg) {
   const nonce = msg.match(/nonce="([^"]+)"/i)?.[1];
   if (!realm || !nonce) return;
 
-  if (registerStep === 2) {
+  if (registerTimer) {
     await handle403(msg);
     return;
   }
 
-  registerStep = 2;
   cseq++;
 
   sendRegister(buildAuth(realm, nonce));
 }
 
 function handleInvite(msg, rinfo) {
-  const via = header(msg, 'Via', 'v');
-  const from = header(msg, 'From', 'f');
-  const to = header(msg, 'To', 't');
-  const callId = header(msg, 'Call-ID', 'i');
-  const cseq = header(msg, 'CSeq');
-
-  const tag = crypto.randomBytes(4).toString('hex');
+  const { via, from, to, callId, cseq } = headers(msg);
 
   sendWebhook({
     event: 'Ringing',
@@ -244,7 +246,7 @@ Content-Length: 0
   const busy = `SIP/2.0 486 Busy Here
 ${via}
 ${from}
-${to};tag=${tag}
+${to};tag=${tag()}
 ${callId}
 ${cseq}
 Content-Length: 0
@@ -263,11 +265,7 @@ Content-Length: 0
 }
 
 function handleOptions(msg, rinfo) {
-  const via = header(msg, 'Via', 'v');
-  const from = header(msg, 'From', 'f');
-  const to = header(msg, 'To', 't');
-  const callId = header(msg, 'Call-ID', 'i');
-  const cseq = header(msg, 'CSeq');
+  const { via, from, to, callId, cseq } = headers(msg);
 
   if (!via || !from || !to || !callId || !cseq) {
     console.error('Malformed OPTIONS, skip');
@@ -277,7 +275,7 @@ function handleOptions(msg, rinfo) {
   const ok = `SIP/2.0 200 OK
 ${via}
 ${from}
-${to};tag=${crypto.randomBytes(4).toString('hex')}
+${to};tag=${tag()}
 ${callId}
 ${cseq}
 Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
@@ -292,11 +290,7 @@ Content-Length: 0
 }
 
 function handleNotify(msg, rinfo) {
-  const via = header(msg, 'Via', 'v');
-  const from = header(msg, 'From', 'f');
-  const to = header(msg, 'To', 't');
-  const callId = header(msg, 'Call-ID', 'i');
-  const cseq = header(msg, 'CSeq');
+  const { via, from, to, callId, cseq } = headers(msg);
 
   if (!via || !from || !to || !callId || !cseq) {
     console.error('Malformed NOTIFY, skip');
@@ -306,7 +300,7 @@ function handleNotify(msg, rinfo) {
   const not = `SIP/2.0 405 Method Not Allowed
 ${via}
 ${from}
-${to};tag=${crypto.randomBytes(4).toString('hex')}
+${to};tag=${tag()}
 ${callId}
 ${cseq}
 Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
@@ -331,8 +325,7 @@ socket.on('message', async (buf, rinfo) => {
     if (cseq === 1) {
       setTimeout(() => sendRegister(), 250);
     } else {
-      registerStep = 1;
-      scheduleReRegister();
+      scheduleRegister();
     }
   } else if (msg.startsWith('INVITE')) handleInvite(msg, rinfo);
   else if (msg.startsWith('OPTIONS')) handleOptions(msg, rinfo);
@@ -350,6 +343,7 @@ async function init() {
 
   await fetchCredentials();
 
+  unRegister();
   sendRegister();
 }
 
