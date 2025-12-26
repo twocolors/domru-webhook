@@ -228,6 +228,7 @@ async function handle401(msg) {
 
 function handleInvite(msg, rinfo) {
   const { via, from, to, callId, cseq } = headers(msg);
+  const toTag = tag();
 
   sendWebhook({
     event: 'Ringing',
@@ -236,7 +237,7 @@ function handleInvite(msg, rinfo) {
   const trying = `SIP/2.0 100 Trying
 ${via}
 ${from}
-${to}
+${to};tag=${toTag}
 ${callId}
 ${cseq}
 Content-Length: 0
@@ -246,7 +247,7 @@ Content-Length: 0
   const busy = `SIP/2.0 486 Busy Here
 ${via}
 ${from}
-${to};tag=${tag()}
+${to};tag=${toTag}
 ${callId}
 ${cseq}
 Content-Length: 0
