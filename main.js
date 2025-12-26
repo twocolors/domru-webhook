@@ -241,7 +241,7 @@ Content-Length: 0
 
 `;
 
-  const not = `SIP/2.0 404 Not Found
+  const busy = `SIP/2.0 486 Busy Here
 ${via}
 ${from}
 ${to};tag=${tag}
@@ -257,8 +257,8 @@ Content-Length: 0
   }, 25);
 
   setTimeout(() => {
-    debug('>>> SIP >>>\n' + not);
-    socket.send(not, rinfo.port, rinfo.address);
+    debug('>>> SIP >>>\n' + busy);
+    socket.send(busy, rinfo.port, rinfo.address);
   }, 175);
 }
 
