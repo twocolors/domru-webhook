@@ -35,6 +35,8 @@ let callId = null;
 let cseq = null;
 let expires = null;
 let registerTimer = null;
+let authFailure = null;
+let lastNonce = null;
 
 const socket = dgram.createSocket('udp4');
 
@@ -55,13 +57,27 @@ const headers = (m) => {
 const unRegister = () => {
   callId = crypto.randomUUID();
   cseq = 1;
-  expires = 120;
+  expires = 60;
 
   clearTimeout(registerTimer);
+
+  registerTimer = null;
+  authFailure = 0;
+  lastNonce = null;
 };
 
+async function handleAuthFailure(reason = 'auth') {
+  console.error(`!!! Auth failure (${reason}) -> re-fetch credentials`);
+
+  await sleep(30 * 1000);
+  await fetchCredentials();
+
+  unRegister();
+  sendRegister();
+}
+
 function debug(m) {
-  if (DEBUG) console.log(m);
+  if (DEBUG) console.log(new Date() + '\n' + m);
 }
 
 function getIp() {
@@ -130,13 +146,13 @@ async function fetchCredentials() {
     console.log('  password =', PASS);
     console.log('\n');
   } catch (e) {
-    console.log('!!! Credentials error:', e.message);
+    console.error('!!! Credentials error:', e.message);
     process.exit(1);
   }
 }
 
 function sendWebhook(payload) {
-  console.log(`!!! Send Webhook to ${WEBHOOK_URL}\n\n`);
+  console.log(`!!! Send Webhook to ${WEBHOOK_URL}`);
 
   try {
     request(WEBHOOK_URL, {
@@ -148,7 +164,7 @@ function sendWebhook(payload) {
       body: JSON.stringify(payload),
     });
   } catch (e) {
-    console.log('!!! Webhook error:', e.message);
+    console.error('!!! Webhook error:', e.message);
   }
 }
 
@@ -162,6 +178,7 @@ Call-ID: ${callId}
 CSeq: ${cseq} REGISTER
 Contact: <sip:${USER}@${IP}:${PORT};ob>;reg-id=42;expires=${cseq === 1 ? 0 : expires}
 Supported: outbound
+Allow-Events: message-summary
 Expires: ${cseq === 1 ? 0 : expires}
 X-Domru-Issues: ${ISSUES}
 User-Agent: ${USER_AGENT}`;
@@ -196,19 +213,12 @@ function scheduleRegister() {
       cseq++;
       sendRegister();
     },
-    Math.max((expires - 5) * 1000, 1000)
+    (expires - 5) * 1000
   );
 }
 
 async function handle403() {
-  console.log('!!! Forbidden -> re-fetch credentials (sleep 60 sec)\n\n');
-
-  await sleep(60 * 1000);
-
-  await fetchCredentials();
-
-  unRegister();
-  sendRegister();
+  await handleAuthFailure('403 forbidden');
 }
 
 async function handle401(msg) {
@@ -216,13 +226,19 @@ async function handle401(msg) {
   const nonce = msg.match(/nonce="([^"]+)"/i)?.[1];
   if (!realm || !nonce) return;
 
-  if (registerTimer) {
-    await handle403(msg);
+  if (lastNonce === nonce) {
+    authFailure++;
+  } else {
+    authFailure = 1;
+    lastNonce = nonce;
+  }
+
+  if (authFailure >= 2) {
+    await handleAuthFailure('invalid credentials');
     return;
   }
 
   cseq++;
-
   sendRegister(buildAuth(realm, nonce));
 }
 
@@ -235,6 +251,16 @@ function handleInvite(msg, rinfo) {
   });
 
   const trying = `SIP/2.0 100 Trying
+${via}
+${from}
+${to};tag=${toTag}
+${callId}
+${cseq}
+Content-Length: 0
+
+`;
+
+  const ringing = `SIP/2.0 180 Ringing
 ${via}
 ${from}
 ${to};tag=${toTag}
@@ -260,9 +286,14 @@ Content-Length: 0
   }, 25);
 
   setTimeout(() => {
+    debug('>>> SIP >>>\n' + ringing);
+    socket.send(ringing, rinfo.port, rinfo.address);
+  }, 150);
+
+  setTimeout(() => {
     debug('>>> SIP >>>\n' + busy);
     socket.send(busy, rinfo.port, rinfo.address);
-  }, 175);
+  }, 25000);
 }
 
 function handleOptions(msg, rinfo) {
@@ -279,7 +310,7 @@ ${from}
 ${to};tag=${tag()}
 ${callId}
 ${cseq}
-Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, NOTIFY
 X-Domru-Issues: ${ISSUES}
 User-Agent: ${USER_AGENT}
 Content-Length: 0
@@ -298,20 +329,19 @@ function handleNotify(msg, rinfo) {
     return;
   }
 
-  const not = `SIP/2.0 405 Method Not Allowed
+  const ok = `SIP/2.0 200 OK
 ${via}
 ${from}
 ${to};tag=${tag()}
 ${callId}
 ${cseq}
-Allow: INVITE, ACK, CANCEL, OPTIONS, BYE
 User-Agent: ${USER_AGENT}
 Content-Length: 0
 
 `;
 
-  debug('>>> SIP >>>\n' + not);
-  socket.send(not, rinfo.port, rinfo.address);
+  debug('>>> SIP >>>\n' + ok);
+  socket.send(ok, rinfo.port, rinfo.address);
 }
 
 socket.on('message', async (buf, rinfo) => {
@@ -321,8 +351,12 @@ socket.on('message', async (buf, rinfo) => {
   if (msg.startsWith('SIP/2.0 401')) await handle401(msg);
   else if (msg.startsWith('SIP/2.0 403')) await handle403();
   else if (msg.startsWith('SIP/2.0 200') && msg.includes('REGISTER')) {
+    authFailure = 0;
+    lastNonce = null;
+
     const exp = msg.match(/Expires:\s*(\d+)/i);
-    if (exp) expires = parseInt(exp[1], 10);
+    if (exp && exp[1] && exp[1] > 0) expires = parseInt(exp[1], 10);
+
     if (cseq === 1) {
       setTimeout(() => sendRegister(), 250);
     } else {
