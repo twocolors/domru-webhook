@@ -31,6 +31,7 @@ let PASS = '';
 let IP = process.env.IP || null;
 let UUID = null;
 
+let sipdevices = null;
 let callId = null;
 let cseq = null;
 let expires = null;
@@ -112,9 +113,57 @@ function getUUID(ip) {
   ].join('-');
 }
 
+async function fetchSipdevices() {
+  try {
+    const isSipDevices = /\/sipdevices\/?$/.test(DOMRU_URL);
+    if (isSipDevices) {
+      sipdevices = DOMRU_URL;
+      return;
+    }
+
+    const res = await fetch(DOMRU_URL, {
+      headers: {
+        'user-agent': USER_AGENT,
+      },
+      redirect: 'follow',
+    });
+
+    if (res.status !== 200 && res.status !== 201) {
+      console.error(`${DOMRU_URL} error ${res.status}`);
+      process.exit(1);
+    }
+
+    const text = await res.text();
+
+    if (!text) {
+      console.error(`Sipdevices not received (${DOMRU_URL})`);
+      process.exit(1);
+    }
+
+    const videosnapshots = text.match(
+      /<img[^>]+src=["']([^"']+videosnapshots)["']/i
+    );
+
+    if (!videosnapshots) {
+      console.error(`videosnapshots not received (${DOMRU_URL})`);
+      process.exit(1);
+    }
+
+    sipdevices = videosnapshots[1].replace(/\/videosnapshots$/, '/sipdevices');
+
+    if (!sipdevices) {
+      console.error(`Sipdevices not received (${DOMRU_URL})`);
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error('!!! Sipdevices error:', e.message);
+    process.exit(1);
+  }
+}
+
 async function fetchCredentials() {
   try {
-    const { statusCode, body } = await request(DOMRU_URL, {
+    const { statusCode, body } = await request(sipdevices, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -124,7 +173,7 @@ async function fetchCredentials() {
     });
 
     if (statusCode !== 200 && statusCode !== 201) {
-      console.error(`${DOMRU_URL} error ${statusCode}`);
+      console.error(`${sipdevices} error ${statusCode}`);
       process.exit(1);
     }
 
@@ -132,7 +181,7 @@ async function fetchCredentials() {
     const data = json?.data;
 
     if (!data || !data.login || !data.password || !data.realm) {
-      console.error(`Credentials not received (${DOMRU_URL})`);
+      console.error(`Credentials not received (${sipdevices})`);
       process.exit(1);
     }
 
@@ -368,13 +417,16 @@ socket.on('message', async (buf, rinfo) => {
 });
 
 async function init() {
+  await fetchSipdevices();
+  console.log('DOMRU:\t', sipdevices);
+
   if (!IP) IP = getIp();
   UUID = getUUID(IP);
 
-  console.log('DEBUG: ', DEBUG);
-  console.log('IP:    ', IP);
-  console.log('PORT:  ', PORT);
-  console.log('UUID:  ', UUID);
+  console.log('DEBUG:\t', DEBUG);
+  console.log('IP:\t', IP);
+  console.log('PORT:\t', PORT);
+  console.log('UUID:\t', UUID);
 
   await fetchCredentials();
 

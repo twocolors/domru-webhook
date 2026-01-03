@@ -40,7 +40,7 @@ IP          - Локальный IP (по умолчанию auto)
 
 При входящем вызове на URL, указанный в `WEBHOOK_URL`, отправляется JSON‑запрос
 
-**Пример тела запроса:**
+**Пример запроса:**
 
 ```json
 {
@@ -50,33 +50,12 @@ IP          - Локальный IP (по умолчанию auto)
 
 ---
 
-## Получение DOMRU_URL
+## DOMRU_URL
 
-Необходимо получить ссылку для работы с API Domru
-
-В конфигурации Domru (например, Home Assistant) используется следующий REST‑команд:
-
-```yaml
-rest_command:
-    domru_open_door:
-        url: http://127.0.0.1:18000/rest/v1/places/1234/accesscontrols/4321/actions
-        method: post
-        headers:
-            accept: "application/json"
-        content_type: 'application/json; charset=utf-8'
-        payload: '{"name":"accessControlOpen"}'
-```
-
-На основе этих данных формируется путь
+Необходимо указать ссылку на web [domru](https://github.com/moleus/domru)
 
 ```
-/rest/v1/places/{placeId}/accesscontrols/{accessControlId}/sipdevices
-```
-
-В приведённом примере значение переменной `DOMRU_URL` будет таким
-
-```
-DOMRU_URL=http://127.0.0.1:18000/rest/v1/places/1234/accesscontrols/4321/sipdevices
+DOMRU_URL=http://192.168.0.10:18000/
 ```
 
 ---
@@ -100,21 +79,13 @@ services:
     restart: always
     environment:
       - TZ=Europe/Moscow
-      - DOMRU_URL=http://127.0.0.1:18000/rest/v1/places/1234/accesscontrols/4321/sipdevices
+      - DOMRU_URL=http://192.168.0.10:18000/
       - WEBHOOK_URL=http://webhook.example
       - PORT=5060
       - DEBUG=false
     ports:
       - "5060:5060/udp"
 ```
-
----
-
-## Безопасность
-
-* Не публикуйте `DOMRU_URL`
-* Отключайте `DEBUG` в продакшене
-* Используйте HTTPS для `WEBHOOK_URL`
 
 ---
 
