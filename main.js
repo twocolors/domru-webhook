@@ -11,20 +11,20 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const DEBUG = process.env.DEBUG && process.env.DEBUG == 'true' ? true : false;
 const PORT = process.env.PORT || 5060;
 
-function info(message) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [info] ${message}`);
+function info(msg) {
+  const ts = new Date().toLocaleString("ru-RU");
+  console.log(`[${ts}] [info] ${msg}`);
 }
 
-function error(message) {
-  const ts = new Date().toISOString();
-  console.error(`[${ts}] [error] ${message}`);
+function error(msg) {
+  const ts = new Date().toLocaleString("ru-RU");
+  console.error(`[${ts}] [error] ${msg}`);
 }
 
-function debug(message) {
+function debug(msg) {
   if (DEBUG) {
-    const ts = new Date().toISOString();
-    console.log(`${ts}\n${message}`);
+    const ts = new Date().toLocaleString("ru-RU");
+    console.log(`[${ts}] ${msg}`);
   }
 }
 
