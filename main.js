@@ -11,13 +11,27 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const DEBUG = process.env.DEBUG && process.env.DEBUG == 'true' ? true : false;
 const PORT = process.env.PORT || 5060;
 
+function info(message) {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] ${message}`);
+}
+
+function error(message) {
+  const ts = new Date().toISOString();
+  console.error(`[${ts}] ${message}`);
+}
+
+function debug(message) {
+  if (DEBUG) console.log(new Date() + '\n' + message);
+}
+
 if (!DOMRU_URL) {
-  console.error('ENV DOMRU_URL is not set');
+  error('ENV DOMRU_URL is not set');
   process.exit(1);
 }
 
 if (!WEBHOOK_URL) {
-  console.error('ENV WEBHOOK_URL is not set');
+  error('ENV WEBHOOK_URL is not set');
   process.exit(1);
 }
 
@@ -68,17 +82,13 @@ const unRegister = () => {
 };
 
 async function handleAuthFailure(reason = 'auth') {
-  console.error(`!!! Auth failure (${reason}) -> re-fetch credentials`);
+  error(`Auth failure (${reason}) -> re-fetch credentials`);
 
   await sleep(30 * 1000);
   await fetchCredentials();
 
   unRegister();
   sendRegister();
-}
-
-function debug(m) {
-  if (DEBUG) console.log(new Date() + '\n' + m);
 }
 
 function getIp() {
@@ -98,7 +108,7 @@ function getIp() {
     }
   }
 
-  console.error(`IP error`);
+  error(`IP get error`);
   process.exit(1);
 }
 
@@ -129,14 +139,14 @@ async function fetchSipdevices() {
     });
 
     if (res.status !== 200 && res.status !== 201) {
-      console.error(`${DOMRU_URL} error ${res.status}`);
+      error(`${DOMRU_URL} error ${res.status} in fetchSipdevices`);
       process.exit(1);
     }
 
     const text = await res.text();
 
     if (!text) {
-      console.error(`Sipdevices not received (${DOMRU_URL})`);
+      error(`Sipdevices not received (${DOMRU_URL})`);
       process.exit(1);
     }
 
@@ -145,18 +155,18 @@ async function fetchSipdevices() {
     );
 
     if (!videosnapshots) {
-      console.error(`videosnapshots not received (${DOMRU_URL})`);
+      error(`Videosnapshots not received (${DOMRU_URL})`);
       process.exit(1);
     }
 
     sipdevices = videosnapshots[1].replace(/\/videosnapshots$/, '/sipdevices');
 
     if (!sipdevices) {
-      console.error(`Sipdevices not received (${DOMRU_URL})`);
+      error(`Sipdevices not received (${DOMRU_URL})`);
       process.exit(1);
     }
   } catch (e) {
-    console.error('!!! Sipdevices error:', e.message);
+    error('Sipdevices error:', e.message);
     process.exit(1);
   }
 }
@@ -173,7 +183,7 @@ async function fetchCredentials() {
     });
 
     if (statusCode !== 200 && statusCode !== 201) {
-      console.error(`${sipdevices} error ${statusCode}`);
+      error(`${sipdevices} error ${statusCode} in fetchCredentials`);
       process.exit(1);
     }
 
@@ -181,7 +191,7 @@ async function fetchCredentials() {
     const data = json?.data;
 
     if (!data || !data.login || !data.password || !data.realm) {
-      console.error(`Credentials not received (${sipdevices})`);
+      error(`Credentials not received (${sipdevices})`);
       process.exit(1);
     }
 
@@ -189,19 +199,19 @@ async function fetchCredentials() {
     PASS = data.password;
     REALM = data.realm;
 
-    console.log('Credentials:');
-    console.log('  realm    =', REALM);
-    console.log('  login    =', USER);
-    console.log('  password =', PASS);
+    console.log('\nCredentials:');
+    console.log('REALM:\t', REALM);
+    console.log('USER:\t', USER);
+    console.log('PASS:\t', PASS);
     console.log('\n');
   } catch (e) {
-    console.error('!!! Credentials error:', e.message);
+    error('Credentials error:', e.message);
     process.exit(1);
   }
 }
 
 function sendWebhook(payload) {
-  console.log(`!!! Send Webhook to ${WEBHOOK_URL}`);
+  info(`Send Webhook to ${WEBHOOK_URL}`);
 
   try {
     request(WEBHOOK_URL, {
@@ -213,7 +223,7 @@ function sendWebhook(payload) {
       body: JSON.stringify(payload),
     });
   } catch (e) {
-    console.error('!!! Webhook error:', e.message);
+    error('Webhook error:', e.message);
   }
 }
 
@@ -349,7 +359,7 @@ function handleOptions(msg, rinfo) {
   const { via, from, to, callId, cseq } = headers(msg);
 
   if (!via || !from || !to || !callId || !cseq) {
-    console.error('Malformed OPTIONS, skip');
+    error('Malformed OPTIONS, skip');
     return;
   }
 
@@ -374,7 +384,7 @@ function handleNotify(msg, rinfo) {
   const { via, from, to, callId, cseq } = headers(msg);
 
   if (!via || !from || !to || !callId || !cseq) {
-    console.error('Malformed NOTIFY, skip');
+    error('Malformed NOTIFY, skip');
     return;
   }
 
@@ -418,6 +428,7 @@ socket.on('message', async (buf, rinfo) => {
 
 async function init() {
   await fetchSipdevices();
+
   console.log('DOMRU:\t', sipdevices);
 
   if (!IP) IP = getIp();
