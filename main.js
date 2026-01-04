@@ -13,25 +13,28 @@ const PORT = process.env.PORT || 5060;
 
 function info(message) {
   const ts = new Date().toISOString();
-  console.log(`[${ts}] ${message}`);
+  console.log(`[${ts}] [info] ${message}`);
 }
 
 function error(message) {
   const ts = new Date().toISOString();
-  console.error(`[${ts}] ${message}`);
+  console.error(`[${ts}] [error] ${message}`);
 }
 
 function debug(message) {
-  if (DEBUG) console.log(new Date() + '\n' + message);
+  if (DEBUG) {
+    const ts = new Date().toISOString();
+    console.log(`${ts}\n${message}`);
+  }
 }
 
 if (!DOMRU_URL) {
-  error('ENV DOMRU_URL is not set');
+  error(`ENV DOMRU_URL is not set`);
   process.exit(1);
 }
 
 if (!WEBHOOK_URL) {
-  error('ENV WEBHOOK_URL is not set');
+  error(`ENV WEBHOOK_URL is not set`);
   process.exit(1);
 }
 
@@ -42,10 +45,10 @@ let REALM = '';
 let USER = '';
 let PASS = '';
 
+let SIPDEVICES = null;
 let IP = process.env.IP || null;
 let UUID = null;
 
-let sipdevices = null;
 let callId = null;
 let cseq = null;
 let expires = null;
@@ -127,7 +130,7 @@ async function fetchSipdevices() {
   try {
     const isSipDevices = /\/sipdevices\/?$/.test(DOMRU_URL);
     if (isSipDevices) {
-      sipdevices = DOMRU_URL;
+      SIPDEVICES = DOMRU_URL;
       return;
     }
 
@@ -159,21 +162,21 @@ async function fetchSipdevices() {
       process.exit(1);
     }
 
-    sipdevices = videosnapshots[1].replace(/\/videosnapshots$/, '/sipdevices');
+    SIPDEVICES = videosnapshots[1].replace(/\/videosnapshots$/, '/sipdevices');
 
-    if (!sipdevices) {
+    if (!SIPDEVICES) {
       error(`Sipdevices not received (${DOMRU_URL})`);
       process.exit(1);
     }
   } catch (e) {
-    error('Sipdevices error:', e.message);
+    error(`Sipdevices error: ${e.message}`);
     process.exit(1);
   }
 }
 
 async function fetchCredentials() {
   try {
-    const { statusCode, body } = await request(sipdevices, {
+    const { statusCode, body } = await request(SIPDEVICES, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -183,7 +186,7 @@ async function fetchCredentials() {
     });
 
     if (statusCode !== 200 && statusCode !== 201) {
-      error(`${sipdevices} error ${statusCode} in fetchCredentials`);
+      error(`${SIPDEVICES} error ${statusCode} in fetchCredentials`);
       process.exit(1);
     }
 
@@ -191,7 +194,7 @@ async function fetchCredentials() {
     const data = json?.data;
 
     if (!data || !data.login || !data.password || !data.realm) {
-      error(`Credentials not received (${sipdevices})`);
+      error(`Credentials not received (${SIPDEVICES})`);
       process.exit(1);
     }
 
@@ -199,13 +202,14 @@ async function fetchCredentials() {
     PASS = data.password;
     REALM = data.realm;
 
-    console.log('\nCredentials:');
-    console.log('REALM:\t', REALM);
-    console.log('USER:\t', USER);
-    console.log('PASS:\t', PASS);
-    console.log('\n');
+    console.log(`
+Credentials:
+REALM:\t${REALM}
+USER:\t${USER}
+PASS:\t${PASS}
+`);
   } catch (e) {
-    error('Credentials error:', e.message);
+    error(`Credentials error: ${e.message}`);
     process.exit(1);
   }
 }
@@ -223,7 +227,7 @@ function sendWebhook(payload) {
       body: JSON.stringify(payload),
     });
   } catch (e) {
-    error('Webhook error:', e.message);
+    error(`Webhook error: ${e.message}`);
   }
 }
 
@@ -256,7 +260,7 @@ function buildAuth(realm, nonce) {
 }
 
 function send(msg) {
-  debug('>>> SIP >>>\n' + msg);
+  debug(`>>> SIP >>>\n${msg}`);
   socket.send(msg, 5060, REALM);
 }
 
@@ -340,17 +344,17 @@ Content-Length: 0
 `;
 
   setTimeout(() => {
-    debug('>>> SIP >>>\n' + trying);
+    debug(`>>> SIP >>>\n${trying}`);
     socket.send(trying, rinfo.port, rinfo.address);
   }, 25);
 
   setTimeout(() => {
-    debug('>>> SIP >>>\n' + ringing);
+    debug(`>>> SIP >>>\n${ringing}`);
     socket.send(ringing, rinfo.port, rinfo.address);
   }, 150);
 
   setTimeout(() => {
-    debug('>>> SIP >>>\n' + busy);
+    debug(`>>> SIP >>>\n${busy}`);
     socket.send(busy, rinfo.port, rinfo.address);
   }, 25000);
 }
@@ -359,7 +363,7 @@ function handleOptions(msg, rinfo) {
   const { via, from, to, callId, cseq } = headers(msg);
 
   if (!via || !from || !to || !callId || !cseq) {
-    error('Malformed OPTIONS, skip');
+    error(`Malformed OPTIONS, skip`);
     return;
   }
 
@@ -376,7 +380,7 @@ Content-Length: 0
 
 `;
 
-  debug('>>> SIP >>>\n' + ok);
+  debug(`>>> SIP >>>\n${ok}`);
   socket.send(ok, rinfo.port, rinfo.address);
 }
 
@@ -384,7 +388,7 @@ function handleNotify(msg, rinfo) {
   const { via, from, to, callId, cseq } = headers(msg);
 
   if (!via || !from || !to || !callId || !cseq) {
-    error('Malformed NOTIFY, skip');
+    error(`Malformed NOTIFY, skip`);
     return;
   }
 
@@ -399,13 +403,13 @@ Content-Length: 0
 
 `;
 
-  debug('>>> SIP >>>\n' + ok);
+  debug(`>>> SIP >>>\n${ok}`);
   socket.send(ok, rinfo.port, rinfo.address);
 }
 
 socket.on('message', async (buf, rinfo) => {
   const msg = buf.toString();
-  debug('<<< SIP <<<\n' + msg);
+  debug(`<<< SIP <<<\n${msg}`);
 
   if (msg.startsWith('SIP/2.0 401')) await handle401(msg);
   else if (msg.startsWith('SIP/2.0 403')) await handle403();
@@ -429,15 +433,14 @@ socket.on('message', async (buf, rinfo) => {
 async function init() {
   await fetchSipdevices();
 
-  console.log('DOMRU:\t', sipdevices);
-
   if (!IP) IP = getIp();
   UUID = getUUID(IP);
 
-  console.log('DEBUG:\t', DEBUG);
-  console.log('IP:\t', IP);
-  console.log('PORT:\t', PORT);
-  console.log('UUID:\t', UUID);
+  console.log(`DOMRU:\t${SIPDEVICES}
+DEBUG:\t${DEBUG}
+IP:\t${IP}
+PORT:\t${PORT}
+UUID:\t${UUID}`);
 
   await fetchCredentials();
 
