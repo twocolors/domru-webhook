@@ -153,16 +153,22 @@ async function fetchSipdevices() {
       process.exit(1);
     }
 
-    const videosnapshots = text.match(
-      /<img[^>]+src=["']([^"']+videosnapshots)["']/i
-    );
+    const matches = [...text.matchAll(/http:\/\/[^\s"]+\/accesscontrols\/(\d+)\/videosnapshots/g)];
 
-    if (!videosnapshots) {
+    if (!matches.length) {
       error(`Videosnapshots not received (${DOMRU_URL})`);
       process.exit(1);
     }
 
-    SIPDEVICES = videosnapshots[1].replace(/\/videosnapshots$/, '/sipdevices');
+    if (matches.length) {
+      const min = matches.reduce((a, b) =>
+        Number(a[1]) < Number(b[1]) ? a : b
+      );
+
+      if (min[0].length) {
+        SIPDEVICES = min[0].replace(/\/videosnapshots$/, '/sipdevices');
+      }
+    }
 
     if (!SIPDEVICES) {
       error(`Sipdevices not received (${DOMRU_URL})`);
