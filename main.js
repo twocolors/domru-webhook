@@ -9,7 +9,8 @@ const pkg = require('./package.json');
 const DOMRU_URL = process.env.DOMRU_URL;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const DEBUG = process.env.DEBUG && process.env.DEBUG == 'true' ? true : false;
-const PORT = process.env.PORT || 5060;
+const PORT = Number(process.env.PORT) > 1024 && Number(process.env.PORT) < 64000 ? Number(process.env.PORT) : 5060;
+const RING_TIME = (Number(process.env.RING_TIME) > 1 && Number(process.env.RING_TIME) < 25) ? Number(process.env.RING_TIME) : 25;
 
 function info(msg) {
   const ts = new Date().toLocaleString("ru-RU");
@@ -210,9 +211,9 @@ async function fetchCredentials() {
 
     console.log(`
 Credentials:
-REALM:\t${REALM}
-USER:\t${USER}
-PASS:\t${PASS}
+REALM:\t\t${REALM}
+USER:\t\t${USER}
+PASS:\t\t${PASS}
 `);
   } catch (e) {
     error(`Credentials error: ${e.message}`);
@@ -362,7 +363,7 @@ Content-Length: 0
   setTimeout(() => {
     debug(`>>> SIP >>>\n${busy}`);
     socket.send(busy, rinfo.port, rinfo.address);
-  }, 25000);
+  }, RING_TIME * 1000);
 }
 
 function handleOptions(msg, rinfo) {
@@ -442,11 +443,12 @@ async function init() {
   if (!IP) IP = getIp();
   UUID = getUUID(IP);
 
-  console.log(`DOMRU:\t${SIPDEVICES}
-DEBUG:\t${DEBUG}
-IP:\t${IP}
-PORT:\t${PORT}
-UUID:\t${UUID}`);
+  console.log(`DOMRU:\t\t${SIPDEVICES}
+DEBUG:\t\t${DEBUG}
+IP:\t\t${IP}
+PORT:\t\t${PORT}
+RING_TIME:\t${RING_TIME}
+UUID:\t\t${UUID}`);
 
   await fetchCredentials();
 
