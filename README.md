@@ -84,8 +84,7 @@ services:
       - WEBHOOK_URL=http://webhook.example
       - PORT=5060
       - DEBUG=false
-    ports:
-      - "5060:5060/udp"
+    network_mode: host
 ```
 
 ---
