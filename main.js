@@ -9,22 +9,29 @@ const pkg = require('./package.json');
 const DOMRU_URL = process.env.DOMRU_URL;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const DEBUG = process.env.DEBUG && process.env.DEBUG == 'true' ? true : false;
-const PORT = Number(process.env.PORT) > 1024 && Number(process.env.PORT) < 64000 ? Number(process.env.PORT) : 5060;
-const RING_TIME = (Number(process.env.RING_TIME) > 1 && Number(process.env.RING_TIME) < 25) ? Number(process.env.RING_TIME) : 25;
+const PORT =
+  Number(process.env.PORT) > 1024 && Number(process.env.PORT) < 64000
+    ? Number(process.env.PORT)
+    : 5060;
+const RING_TIME =
+  Number(process.env.RING_TIME) > 1 && Number(process.env.RING_TIME) < 25
+    ? Number(process.env.RING_TIME)
+    : 25;
+const SIP_INSTANCE = `"<urn:uuid:${crypto.randomUUID()}>"`;
 
 function info(msg) {
-  const ts = new Date().toLocaleString("ru-RU");
+  const ts = new Date().toLocaleString('ru-RU');
   console.log(`[${ts}] [info] ${msg}`);
 }
 
 function error(msg) {
-  const ts = new Date().toLocaleString("ru-RU");
+  const ts = new Date().toLocaleString('ru-RU');
   console.error(`[${ts}] [error] ${msg}`);
 }
 
 function debug(msg) {
   if (DEBUG) {
-    const ts = new Date().toLocaleString("ru-RU");
+    const ts = new Date().toLocaleString('ru-RU');
     console.log(`[${ts}] ${msg}`);
   }
 }
@@ -112,7 +119,7 @@ function getIp() {
     }
   }
 
-  error(`IP get error`);
+  error(`get IP error`);
   process.exit(1);
 }
 
@@ -154,7 +161,11 @@ async function fetchSipdevices() {
       process.exit(1);
     }
 
-    const matches = [...text.matchAll(/http:\/\/[^\s"]+\/accesscontrols\/(\d+)\/videosnapshots/g)];
+    const matches = [
+      ...text.matchAll(
+        /http:\/\/[^\s"]+\/accesscontrols\/(\d+)\/videosnapshots/g
+      ),
+    ];
 
     if (!matches.length) {
       error(`Videosnapshots not received (${DOMRU_URL})`);
@@ -246,7 +257,7 @@ From: <sip:${USER}@${REALM}>;tag=${tag()}
 To: <sip:${USER}@${REALM}>
 Call-ID: ${callId}
 CSeq: ${cseq} REGISTER
-Contact: <sip:${USER}@${IP}:${PORT};ob>;reg-id=42;expires=${cseq === 1 ? 0 : expires}
+Contact: <sip:${USER}@${IP}:${PORT};ob>;reg-id=42;+sip.instance=${SIP_INSTANCE};expires=${cseq === 1 ? 0 : expires}
 Supported: outbound
 Allow-Events: message-summary
 Expires: ${cseq === 1 ? 0 : expires}
